@@ -1,0 +1,150 @@
+---
+title: "Analysis of Most Impactful Weather Events from NOAA Storm Database"
+author: "Beth Skierski"
+date: "9/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Synopsis
+
+The goal of this analysis is to explore the NOAA Storm Database and determine which specific event types cause the most harm to public health and have the greatest economic impact. Extensive data processing is completed to calculate sums of fatalities, injuries, property damage, and crop damage. These sums are then used to rank which events are most impactful and to create plots that visualize those events. As shown in the following analysis, it can be concluded that tornadoes are most harmful to human health, both in terms of fatalities and injuries. It can further be concluded that floods have the greatest economic consequences. The following analysis reflects the exact steps taken to load and process the data and to create the plots visualizing the conclusions as noted.
+
+## Data Processing
+
+The first step of data processing is to load the storm data into R and store it in a new dataframe.
+
+```{r}
+## read storm data into R
+
+if(!file.exists("./stormdata/stormData.csv.bz2")) { download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", destfile = "stormData.csv.bz2")
+}
+stormdata <- read.csv("stormData.csv.bz2", header = TRUE, sep = ",", stringsAsFactors = FALSE)
+```
+
+Once the raw data is properly loaded, additional processing can be done to determine the sums of fatalities and injuries by event type. This can be done by creating new, condensed dataframes that contain only the sums by event type.
+
+```{r}
+## load dplyr package
+library(dplyr)
+
+## Calculate sums of Fatalities by EVTYPE
+fatalsums <- tapply(stormdata$FATALITIES, stormdata$EVTYPE, FUN=sum)
+
+## Arrange Total Fatalities and Event Type in a new data frame, with the highest fatality events listed first 
+fataldf <- data.frame(EVTYPE=names(fatalsums), Fatalities=fatalsums)
+fataldf <- fataldf[order(fataldf$Fatalities, decreasing = TRUE), ]
+
+## Calculate sums of Injuries by EVTYPE
+injurysums <- tapply(stormdata$INJURIES, stormdata$EVTYPE, FUN=sum)
+
+## Arrange Total Injuries and Event Type in a new data frame, with the highest injury events listed first 
+injurydf <- data.frame(EVTYPE = names(injurysums), Injuries = injurysums)
+injurydf <- injurydf[order(injurydf$Injuries, decreasing = TRUE), ]
+```
+
+Now that the total fatalities and injuries by event type have been calculated and arranged, a smaller dataframe of each can be created and used for plotting, so that only the most dangerous events can be highlighted.
+
+```{r}
+## Create condensed Fatality and Injury dataframes to capture only top 5 event types causing most fatalities and injuries
+fataldf_short <- fataldf[1:5, ]
+injurydf_short <- injurydf[1:5, ]
+```
+
+Processing must similarly be performed to calculate property and crop damage. Due to the fact that the multipliers for both types of damage are in separate columns, new columns can be added to the original storm dataframe to represent total damage for both property and crops. These damage columns can then be added together to calculate a total damage value for each instance.
+
+```{r}
+## Add new column for total property damage, which multiplies property damage value by appropriate multiplier
+stormdata2 <- stormdata %>%
+  replace(is.na(.), 0) %>%
+  mutate(propdmgtot = case_when(
+    PROPDMGEXP == "B"|PROPDMGEXP == "b"~PROPDMG*1000000000,
+    PROPDMGEXP == "M"|PROPDMGEXP == "m"~PROPDMG*1000000,
+    PROPDMGEXP == "K"|PROPDMGEXP == "k"~PROPDMG*1000,
+    PROPDMGEXP == "H"|PROPDMGEXP == "h"~PROPDMG*100,
+    PROPDMGEXP == "+"~PROPDMG*1,
+    PROPDMGEXP == "?"~PROPDMG*0,
+    PROPDMGEXP == "-"~PROPDMG*0,
+    PROPDMGEXP == " "~PROPDMG*0,
+    PROPDMGEXP %in% 0:9~PROPDMG*10
+    ))
+
+## Add new column for total crop damage, which multiplies crop damage value by appropriate multiplier
+stormdata3 <- stormdata2 %>%
+  replace(is.na(.), 0) %>%
+  mutate(cropdmgtot = case_when(
+    CROPDMGEXP == "B"|CROPDMGEXP == "b"~CROPDMG*1000000000,
+    CROPDMGEXP == "M"|CROPDMGEXP == "m"~CROPDMG*1000000,
+    CROPDMGEXP == "K"|CROPDMGEXP == "k"~CROPDMG*1000,
+    CROPDMGEXP == "H"|CROPDMGEXP == "h"~CROPDMG*100,
+    CROPDMGEXP == "+"~CROPDMG*1,
+    CROPDMGEXP == "?"~CROPDMG*0,
+    CROPDMGEXP == "-"~CROPDMG*0,
+    CROPDMGEXP == " "~CROPDMG*0,
+    CROPDMGEXP %in% 0:9~CROPDMG*10
+    ))
+## create new column with sum of both property and crop damage by instance
+stormdata4 <- stormdata3 %>%
+  replace(is.na(.), 0) %>%
+  mutate(dmgtot = propdmgtot + cropdmgtot)
+
+```
+
+Now that the total economic damage is calculated for each row, similar processing can be completed as was done for fatalities and injuries, to determine the sum of total damage by event type.
+
+```{r}
+## Calculate sums of total damage by EVTYPE
+dmgsums <- tapply(stormdata4$dmgtot, stormdata4$EVTYPE, FUN=sum)
+
+## Arrange Total Property Damage and Event Type in a new data frame, with the highest damage events listed first 
+dmgdf <- data.frame(EVTYPE=names(dmgsums), TotalDamage=dmgsums)
+dmgdf <- dmgdf[order(dmgdf$TotalDamage, decreasing = TRUE), ]
+```
+
+Now that the total damage by event type has been calculated and arranged, a smaller dataframe can be created and used for plotting, so that only the most impactful events can be highlighted. Further, the dollar amounts are converted into Billions to simplify the plotting view.
+
+```{r}
+## Create condensed Property and Crop damage dataframes to capture only top 5 event types causing most property and crop damage
+dmgdf_short <- dmgdf[1:5, ]
+
+## Convert dollar amounts to millions of dollars
+dmgdf_short <- dmgdf_short %>%
+  mutate(BilDamage = TotalDamage/1000000000)
+```
+
+## Results
+
+Now that the data has been properly processed, it can be used to create plots highlighting the most dangerous events and those with the greatest economic impact.
+
+First, we can create plots showing which event types caused the most fatalities and injuries.
+
+```{r}
+## Load ggplot
+library(ggplot2)
+## Plot Total Fatalities by Event Type
+f <- ggplot(fataldf_short, aes(EVTYPE, Fatalities)) + geom_point(color = 'red')
+f + ggtitle("Total Fatalities by Event Type") + labs(x = "Event Type")
+
+## Plot Total Injuries by Event Type
+i <- ggplot(injurydf_short, aes(EVTYPE, Injuries)) + geom_point(color = 'blue')
+i + ggtitle("Total Injuries by Event Type") + labs(x = "Event Type")
+```
+
+One can see that tornadoes by far have both the highest fatalities and injuries, with over 5,500 fatalities and over 75,000 injuries. Excessive heat is also quite impactful on health, as it has the next highest count of fatalities and a similar count of injuries as the next three highest event types.
+
+Next, the following plot shows the event types which have the greatest economic impact.
+
+```{r}
+## Plot Total Economic Damage by Event Type
+e <- ggplot(dmgdf_short, aes(EVTYPE, BilDamage)) + geom_point(color = 'purple')
+e + ggtitle("Total Economic Damage by Event Type") + labs(x = "Event Type", y = "Economic Damage ($billions)")
+```
+
+One can see that the "flood" event type has the highest amount of total economic damage at over $150 billion.
+
+## Conclusions
+
+In conclusion, tornadoes are the most harmful to public health, and floods have the greatest economic impact. Further analysis could be considered to combine event types (e.g. multiple different types of floods). This analysis looks at every specific event type to draw its conclusions. All code above can be used to reproduce this analysis.
